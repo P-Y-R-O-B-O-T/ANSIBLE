@@ -16,6 +16,38 @@
     - ansible_ssh_pass: pass for the machines
 * Ansible allows to have parent child relationships between server groups
 
+```
+all:
+  children:
+    webservers:
+      hosts:
+        web1.example.com:
+        web2.example.com:
+    dbservers:
+      hosts:
+        db1.example.com:
+        db2.example.com:
+```
+
+```
+all:
+  childern:
+     webservers:
+       childern:  
+          webservers_us:
+             hosts:
+               server1_us.com
+                       ansible_host: 192.168.8.101
+               server2_us.com
+                       ansible_host: 192.168.8.102
+          webservers_eu:
+             hosts:
+               server1_eu.com
+                       ansible_host: 10.12.0.101
+               server2_eu.com
+                       ansible_host: 10.12.0.102
+```
+
 ## TEMPLATES
 * Ansible uses jinja 2 templates
 * A shaped piece of object which is customizable
@@ -30,6 +62,7 @@
 {{ 100 | random }}
 {{ ["1","2","3"] | join(" ") }}
 ```
+
 - Conditions and Loops
 ```
 {% for number in [0,1,2,3,4] %}
@@ -41,6 +74,33 @@
         {{ number }}
     {% endif %}
 {% endfor %}
+```
+
+```
+# JINJA TEMPLATE IN FILE COPY TO TARGET HOST
+/etc/ansible/hosts
+[web_servers]
+web1 ansible_host=172.20.1.100
+web2 ansible_host=172.20.1.101
+web3 ansible_host=172.20.1.102
+
+playbook.yml
+_
+  hosts: web_servers
+  tasks:
+    -name: Copy index.html to remote servers
+     template:
+       src: index.html.j2
+       dest: /var/www/nginx-default/index.html
+       
+index.html.j2
+<!DOCTYPE html>
+<html>
+<body>
+this is {{ inventory_hostname }} Server
+</body>
+</html>
+
 ```
 
 ## ANSIBLE CONFIG FILES
@@ -56,6 +116,27 @@
 * `ansible-config list` to see configuration parameters or list all configurations
 * `ansible-config view` to see current config file
 * `ansible-config dump` to see current settings
+* **Basic Config File**
+```
+/etc/ansible/ansible.cfg
+[defaults]
+
+inventory             = /etc/ansible/hosts
+log_path              = /var/log/ansible.log
+
+library               = /usr/share/my_modules/
+roles_path            = /etc/ansible/roles
+action_plugins        = /usr/share/ansible/plugins/action
+
+gathering             = implicit
+
+#SSH timeout
+timeout               = 10
+forks                 = 5
+
+[inventory]
+enable_plugins        = host_list, virtualbox, yaml, constructed
+```
 
 ## VARIABLES AND FACTS
 * We can define variables in seperate variables file and also in inventory file
@@ -191,8 +272,9 @@ v2:
 * Ansible Playbooks are lists of tasks that automatically execute for your specified inventory or groups of hostvars
 * They are defined as a yaml file, we can have multiple plays in a playbook
 ```
--
-  name: zzz1
+PLAYBOOK FORMAT
+
+- name: zzz1
   hosts: host_grp_1
   tasks:
     - name: zzz11
@@ -200,14 +282,39 @@ v2:
     - name: zzz12
       script: path/to/script
 
--
-  name: zzz2
+- name: zzz2
   hosts: host_grp_2
   tasks:
     - name: zzz21
       command: date
     - name: zzz22
       script: path/to/script
+```
+
+```
+PLAYBOOK FORMAT
+
+- name: Play 1
+  hosts: localhost
+  tasks:
+    - name: Execute command 'date'
+      command: data
+        
+    - name: Execute script on server
+      script: test_script.sh
+        
+- name: Play 2
+  hosts: localhost
+  tasks:
+    - name: install web service
+      yum: 
+        name: httpd
+        state: present
+               
+    - name: start web server
+      service:
+        name: httpd
+        state: started
 ```
 
 * **Verification**
@@ -217,17 +324,78 @@ v2:
 * We can check for linting and indentation and formatting issues by `ansible-lint PLAYBOOK_PATH`
 * We can do conditional checks in playbook to perform an action only if a condition matches
 ```
-conditional check for ansible checks for package managers
+# conditional check for ansible checks for package managers
+- name: Install required packages
+  apt: 
+  name:
+   - package1
+   - package2
+  state: present
+
+- name: Creat necessary directories and set permissions
+
+
+- name: Start web application service
+   service:
+     name: myapp
+     state: started
+  when: environment == 'production'
 ```
+
 ```
-conditional loops
+# conditional loops
 ```
+
+
 ```
-mailing conditional
+# mailing conditional
 ```
+
 ```
-environment variable set dev, test, prod
+# MAILING AT A CONDITION
+
+- name: Check status of a service and email if its down
+  hosts: localhost 
+  tasks: 
+    - command: service httpd status
+     register: result
+
+   -  mail:
+       to: admin@company.com
+       subject: Service Alert
+       body: Httpd Service is down 
+       when: result.stdout.find ('down') != -1
 ```
+
+```
+# environment variable set dev, test, prod
+```
+
+```
+LINE IN FILE: find a line and replace it or append a line to a file
+/etc/resolv.conf
+nameserver 10.1.250.1
+nameserver 10.1.250.2
+
+playbook.yml
+- name: Add DNS server to resolv.conf
+  hosts: localhost
+  tasks:
+   - lineinfile:
+        path: /etc/resolv.conf
+        line: 'nameserver 10.1.250.10'
+
+/etc/resolv.conf
+nameserver 10.1.250.1
+nameserver 10.1.250.2
+nameserver 10.1.250.10
+
+/etc/resolve.conf
+nameserver 10.1.250.1
+nameserver 10.1.250.2
+nameserver 10.1.250.10
+```
+
 ## MODULES
 * Different actions run by tasks are called modules
 * There are different types of modules: system, file, database, cloud, commands and many more
@@ -297,7 +465,7 @@ environment variable set dev, test, prod
 # tasks/main.yaml contains tasks
 # var/main.yaml contains varibbles that need to be defined for role to work
 ```
-* TO USE THIS ROLE WE HAVE TO MOVE THE `ROLE_NAME` DIRECTORY TO THE `roles/` DIRECTORY AS THE PLAYBOOK THAT USES THIS ROLE
+* To use the above role we have to move the `ROLE_NAME` directory to the `roles/` directory as the playbook that uses this role
 * `roles` directory is present in the same directory as the playbook using the roles
 * Installed roles are present in `/etc/ansible/roles/`
 * To install a role use `ansible galaxy-search ROLE_NAME` and `ansible-galaxy install ROLE_NAME`
@@ -325,8 +493,7 @@ environment variable set dev, test, prod
 * Install a collection `ansible-galaxy collection install COLLECTION_NAME` (network.cisco)
 * Advantages: expanded functionality, modularity and reuasbility, simplified shipping
 
-* ansible
-
+* Ansible has cloud automation collections such as amazon.aws
 ```
 ansible-galaxy collection install amazon.aws
 
